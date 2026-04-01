@@ -693,6 +693,7 @@ function Invoke-SelectionGui {
     $form.StartPosition = "CenterScreen"
     $form.Size = New-Object System.Drawing.Size(1180, 760)
     $form.MinimumSize = New-Object System.Drawing.Size(1024, 700)
+    $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
 
     $themeBg = [System.Drawing.Color]::FromArgb(18, 20, 24)
     $themePanel = [System.Drawing.Color]::FromArgb(28, 32, 38)
@@ -881,6 +882,49 @@ function Invoke-SelectionGui {
     $script:GuiCurrentCategory = $script:GuiCategoryNames[0]
     $script:GuiVisibleMap = @()
     $script:GuiUpdatingChecks = $false
+
+    function Layout-GuiControls {
+        $buttonHeight = 32
+        $buttonGap = 8
+        $bottomMargin = 18
+        $rightMargin = 18
+
+        $colWide = 112
+        $colNarrow = 109
+
+        $col3X = $form.ClientSize.Width - $rightMargin - $colNarrow
+        $col2X = $col3X - $buttonGap - $colWide
+        $col1X = $col2X - $buttonGap - $colWide
+
+        $row3Y = $form.ClientSize.Height - $bottomMargin - $buttonHeight
+        $row2Y = $row3Y - $buttonGap - $buttonHeight
+        $row1Y = $row2Y - $buttonGap - $buttonHeight
+
+        # Action buttons (right side)
+        $btnExport.Location = New-Object System.Drawing.Point($col1X, $row1Y)
+        $btnImport.Location = New-Object System.Drawing.Point($col2X, $row1Y)
+
+        $btnEnableCat.Location = New-Object System.Drawing.Point($col1X, $row2Y)
+        $btnDisableCat.Location = New-Object System.Drawing.Point($col2X, $row2Y)
+        $btnContinue.Location = New-Object System.Drawing.Point($col3X, $row2Y)
+
+        $btnEnableAll.Location = New-Object System.Drawing.Point($col1X, $row3Y)
+        $btnDisableAll.Location = New-Object System.Drawing.Point($col2X, $row3Y)
+        $btnCancel.Location = New-Object System.Drawing.Point($col3X, $row3Y)
+
+        # Lists should stop above button rows
+        $listBottomY = $row1Y - 12
+        $categoryList.Height = [math]::Max(220, ($listBottomY - $categoryList.Top))
+        $packageList.Height = [math]::Max(220, ($listBottomY - $packageList.Top))
+
+        # Status area to the left of buttons
+        $statusWidth = [math]::Max(420, ($col1X - 26))
+        $statusLabel.Location = New-Object System.Drawing.Point(18, $row2Y + 4)
+        $statusLabel.Size = New-Object System.Drawing.Size($statusWidth, 22)
+
+        $estimateLabel.Location = New-Object System.Drawing.Point(18, $row3Y + 4)
+        $estimateLabel.Size = New-Object System.Drawing.Size($statusWidth, 20)
+    }
 
     function Refresh-GuiTotals {
         $selectedCount = Get-SelectedPackageCount -EnabledPkgs $ep
@@ -1135,6 +1179,9 @@ function Invoke-SelectionGui {
         $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $form.Close()
     })
+
+    $form.Add_Resize({ Layout-GuiControls })
+    Layout-GuiControls
 
     Refresh-GuiTotals
     Refresh-GuiPackageList
