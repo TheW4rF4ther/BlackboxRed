@@ -56,10 +56,65 @@ param (
     [string]$InstallerRepoUrl = ""
 )
 
-#Requires -RunAsAdministrator
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Escape-Argument {
+    param([string]$Value)
+    if ($null -eq $Value) { return '""' }
+    return '"' + ($Value -replace '"', '""') + '"'
+}
+
+function Restart-ElevatedIfNeeded {
+    if (Test-IsAdministrator) { return }
+
+    Write-Host "[!] Administrator privileges are required. Relaunching elevated..." -ForegroundColor Yellow
+
+    $argList = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", (Escape-Argument -Value $PSCommandPath)
+    )
+
+    if ($SkipClone.IsPresent) { $argList += "-SkipClone" }
+    if ($NoPassword.IsPresent) { $argList += "-NoPassword" }
+    if ($SkipChecks.IsPresent) { $argList += "-SkipChecks" }
+    if ($CLI.IsPresent) { $argList += "-CLI" }
+    if ($UseGui.IsPresent) { $argList += "-UseGui" }
+
+    if ($Password -ne "") {
+        $argList += "-Password"
+        $argList += (Escape-Argument -Value $Password)
+    }
+
+    if ($InstallerRoot -ne "") {
+        $argList += "-InstallerRoot"
+        $argList += (Escape-Argument -Value $InstallerRoot)
+    }
+
+    if ($InstallerRepoUrl -ne "") {
+        $argList += "-InstallerRepoUrl"
+        $argList += (Escape-Argument -Value $InstallerRepoUrl)
+    }
+
+    $psi = @{
+        FilePath = "powershell.exe"
+        ArgumentList = ($argList -join " ")
+        Verb = "RunAs"
+        WindowStyle = "Normal"
+    }
+
+    Start-Process @psi | Out-Null
+    exit 0
+}
+
+Restart-ElevatedIfNeeded
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION
