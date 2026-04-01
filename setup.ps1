@@ -892,25 +892,25 @@ function Invoke-SelectionGui {
         $colWide = 112
         $colNarrow = 109
 
-        $col3X = $form.ClientSize.Width - $rightMargin - $colNarrow
-        $col2X = $col3X - $buttonGap - $colWide
-        $col1X = $col2X - $buttonGap - $colWide
+        $col3X = [int]($form.ClientSize.Width - $rightMargin - $colNarrow)
+        $col2X = [int]($col3X - $buttonGap - $colWide)
+        $col1X = [int]($col2X - $buttonGap - $colWide)
 
-        $row3Y = $form.ClientSize.Height - $bottomMargin - $buttonHeight
-        $row2Y = $row3Y - $buttonGap - $buttonHeight
-        $row1Y = $row2Y - $buttonGap - $buttonHeight
+        $row3Y = [int]($form.ClientSize.Height - $bottomMargin - $buttonHeight)
+        $row2Y = [int]($row3Y - $buttonGap - $buttonHeight)
+        $row1Y = [int]($row2Y - $buttonGap - $buttonHeight)
 
         # Action buttons (right side)
-        $btnExport.Location = New-Object System.Drawing.Point($col1X, $row1Y)
-        $btnImport.Location = New-Object System.Drawing.Point($col2X, $row1Y)
+        $btnExport.Location = [System.Drawing.Point]::new($col1X, $row1Y)
+        $btnImport.Location = [System.Drawing.Point]::new($col2X, $row1Y)
 
-        $btnEnableCat.Location = New-Object System.Drawing.Point($col1X, $row2Y)
-        $btnDisableCat.Location = New-Object System.Drawing.Point($col2X, $row2Y)
-        $btnContinue.Location = New-Object System.Drawing.Point($col3X, $row2Y)
+        $btnEnableCat.Location = [System.Drawing.Point]::new($col1X, $row2Y)
+        $btnDisableCat.Location = [System.Drawing.Point]::new($col2X, $row2Y)
+        $btnContinue.Location = [System.Drawing.Point]::new($col3X, $row2Y)
 
-        $btnEnableAll.Location = New-Object System.Drawing.Point($col1X, $row3Y)
-        $btnDisableAll.Location = New-Object System.Drawing.Point($col2X, $row3Y)
-        $btnCancel.Location = New-Object System.Drawing.Point($col3X, $row3Y)
+        $btnEnableAll.Location = [System.Drawing.Point]::new($col1X, $row3Y)
+        $btnDisableAll.Location = [System.Drawing.Point]::new($col2X, $row3Y)
+        $btnCancel.Location = [System.Drawing.Point]::new($col3X, $row3Y)
 
         # Lists should stop above button rows
         $listBottomY = $row1Y - 12
@@ -919,11 +919,11 @@ function Invoke-SelectionGui {
 
         # Status area to the left of buttons
         $statusWidth = [math]::Max(420, ($col1X - 26))
-        $statusLabel.Location = New-Object System.Drawing.Point(18, $row2Y + 4)
-        $statusLabel.Size = New-Object System.Drawing.Size($statusWidth, 22)
+        $statusLabel.Location = [System.Drawing.Point]::new(18, [int]($row2Y + 4))
+        $statusLabel.Size = [System.Drawing.Size]::new([int]$statusWidth, 22)
 
-        $estimateLabel.Location = New-Object System.Drawing.Point(18, $row3Y + 4)
-        $estimateLabel.Size = New-Object System.Drawing.Size($statusWidth, 20)
+        $estimateLabel.Location = [System.Drawing.Point]::new(18, [int]($row3Y + 4))
+        $estimateLabel.Size = [System.Drawing.Size]::new([int]$statusWidth, 20)
     }
 
     function Refresh-GuiTotals {
