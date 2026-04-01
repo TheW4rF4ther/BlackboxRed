@@ -1002,6 +1002,8 @@ function Invoke-SelectionGui {
     $searchBox.Add_TextChanged({ Refresh-GuiPackageList })
 
     $packageList.Add_ItemCheck({
+        param($sender, $e)
+
         if ($script:GuiUpdatingChecks) { return }
         if ($e.Index -lt 0 -or $e.Index -ge $script:GuiVisibleMap.Count) { return }
 
