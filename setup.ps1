@@ -34,6 +34,9 @@
 .PARAMETER UseGui
     Enable a Windows Forms package selection interface for fine-tuning.
 
+.PARAMETER UseConsole
+    Force the text-based selector even when GUI mode is available.
+
 .PARAMETER Password
     Windows account password for Boxstarter reboot-resilience (CLI mode).
 
@@ -51,6 +54,7 @@ param (
     [switch]$SkipChecks,
     [switch]$CLI,
     [switch]$UseGui,
+    [switch]$UseConsole,
     [string]$Password = "",
     [string]$InstallerRoot = "",
     [string]$InstallerRepoUrl = ""
@@ -87,6 +91,7 @@ function Restart-ElevatedIfNeeded {
     if ($SkipChecks.IsPresent) { $argList += "-SkipChecks" }
     if ($CLI.IsPresent) { $argList += "-CLI" }
     if ($UseGui.IsPresent) { $argList += "-UseGui" }
+    if ($UseConsole.IsPresent) { $argList += "-UseConsole" }
 
     if ($Password -ne "") {
         $argList += "-Password"
@@ -704,33 +709,55 @@ function Invoke-SelectionGui {
     $subHeader.Location = New-Object System.Drawing.Point(18, 42)
     $subHeader.Size = New-Object System.Drawing.Size(1100, 32)
     $subHeader.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $subHeader.Text = "Choose a category on the left, then check/uncheck packages on the right. Use presets in console first, then fine tune here."
+    $subHeader.Text = "Choose a category on the left, then check/uncheck packages on the right. Presets can be applied from this window."
     $subHeader.ForeColor = $themeMuted
 
+    $presetLabel = New-Object System.Windows.Forms.Label
+    $presetLabel.Location = New-Object System.Drawing.Point(18, 78)
+    $presetLabel.AutoSize = $true
+    $presetLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $presetLabel.Text = "Preset"
+    $presetLabel.ForeColor = $themeFg
+
+    $presetCombo = New-Object System.Windows.Forms.ComboBox
+    $presetCombo.Location = New-Object System.Drawing.Point(78, 75)
+    $presetCombo.Size = New-Object System.Drawing.Size(220, 25)
+    $presetCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $presetCombo.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    [void]$presetCombo.Items.AddRange(@("Professional", "Lean Operator", "Cloud Operations", "Start Blank"))
+    $presetCombo.SelectedIndex = 0
+    $presetCombo.BackColor = $themeInput
+    $presetCombo.ForeColor = $themeFg
+
+    $btnApplyPreset = New-Object System.Windows.Forms.Button
+    $btnApplyPreset.Location = New-Object System.Drawing.Point(304, 74)
+    $btnApplyPreset.Size = New-Object System.Drawing.Size(132, 28)
+    $btnApplyPreset.Text = "Apply Preset"
+
     $categoryLabel = New-Object System.Windows.Forms.Label
-    $categoryLabel.Location = New-Object System.Drawing.Point(18, 86)
+    $categoryLabel.Location = New-Object System.Drawing.Point(18, 110)
     $categoryLabel.AutoSize = $true
     $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $categoryLabel.Text = "Categories"
     $categoryLabel.ForeColor = $themeFg
 
     $categoryList = New-Object System.Windows.Forms.ListBox
-    $categoryList.Location = New-Object System.Drawing.Point(18, 110)
-    $categoryList.Size = New-Object System.Drawing.Size(330, 490)
+    $categoryList.Location = New-Object System.Drawing.Point(18, 134)
+    $categoryList.Size = New-Object System.Drawing.Size(330, 466)
     $categoryList.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $categoryList.BackColor = $themeInput
     $categoryList.ForeColor = $themeFg
     $categoryList.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
     $packageLabel = New-Object System.Windows.Forms.Label
-    $packageLabel.Location = New-Object System.Drawing.Point(366, 86)
+    $packageLabel.Location = New-Object System.Drawing.Point(366, 110)
     $packageLabel.AutoSize = $true
     $packageLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $packageLabel.Text = "Packages"
     $packageLabel.ForeColor = $themeFg
 
     $searchBox = New-Object System.Windows.Forms.TextBox
-    $searchBox.Location = New-Object System.Drawing.Point(430, 84)
+    $searchBox.Location = New-Object System.Drawing.Point(430, 108)
     $searchBox.Size = New-Object System.Drawing.Size(320, 23)
     $searchBox.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $searchBox.BackColor = $themeInput
@@ -738,15 +765,15 @@ function Invoke-SelectionGui {
     $searchBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
     $searchLabel = New-Object System.Windows.Forms.Label
-    $searchLabel.Location = New-Object System.Drawing.Point(756, 87)
+    $searchLabel.Location = New-Object System.Drawing.Point(756, 111)
     $searchLabel.AutoSize = $true
     $searchLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $searchLabel.Text = "Filter current category"
     $searchLabel.ForeColor = $themeMuted
 
     $packageList = New-Object System.Windows.Forms.CheckedListBox
-    $packageList.Location = New-Object System.Drawing.Point(366, 110)
-    $packageList.Size = New-Object System.Drawing.Size(785, 490)
+    $packageList.Location = New-Object System.Drawing.Point(366, 134)
+    $packageList.Size = New-Object System.Drawing.Size(785, 466)
     $packageList.CheckOnClick = $true
     $packageList.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $packageList.BackColor = $themeInput
@@ -805,7 +832,7 @@ function Invoke-SelectionGui {
     $btnContinue.Size = New-Object System.Drawing.Size(109, 32)
     $btnContinue.Text = "Continue"
 
-    $buttonList = @($btnExport, $btnImport, $btnEnableCat, $btnDisableCat, $btnEnableAll, $btnDisableAll, $btnContinue, $btnCancel)
+    $buttonList = @($btnApplyPreset, $btnExport, $btnImport, $btnEnableCat, $btnDisableCat, $btnEnableAll, $btnDisableAll, $btnContinue, $btnCancel)
     foreach ($button in $buttonList) {
         $button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
         $button.FlatAppearance.BorderSize = 1
@@ -822,6 +849,9 @@ function Invoke-SelectionGui {
     $form.Controls.AddRange(@(
         $header,
         $subHeader,
+        $presetLabel,
+        $presetCombo,
+        $btnApplyPreset,
         $categoryLabel,
         $categoryList,
         $packageLabel,
@@ -851,6 +881,15 @@ function Invoke-SelectionGui {
         $statusLabel.Text = "Selected packages: $selectedCount / $totalAvailable"
         $estimateGb = Get-EstimatedDiskGb -SelectedPackageCount $selectedCount
         $estimateLabel.Text = "Estimated required disk footprint: ~${estimateGb} GB"
+    }
+
+    function Get-GuiPresetKey {
+        switch ($presetCombo.SelectedItem.ToString()) {
+            "Lean Operator" { return "Lean" }
+            "Cloud Operations" { return "Cloud" }
+            "Start Blank" { return "Blank" }
+            default { return "Professional" }
+        }
     }
 
     function Get-SelectionExportObject {
@@ -1007,6 +1046,13 @@ function Invoke-SelectionGui {
         Refresh-GuiPackageList
     })
 
+    $btnApplyPreset.Add_Click({
+        $presetKey = Get-GuiPresetKey
+        $ep = Set-PresetSelection -Preset $presetKey
+        Refresh-GuiCategoryList
+        Refresh-GuiPackageList
+    })
+
     $btnExport.Add_Click({
         $saveDialog = New-Object System.Windows.Forms.SaveFileDialog
         $saveDialog.Title = "Export BlackboxRed Selection Preset"
@@ -1094,21 +1140,23 @@ function Invoke-SelectionGui {
 }
 
 function Invoke-SelectionMenu {
-    $presetSelection = Invoke-QuickStartPreset
+    $useGuiByDefault = $PSVersionTable.PSEdition -eq "Desktop"
+    $shouldUseGui = ($UseGui.IsPresent -or $useGuiByDefault) -and (-not $UseConsole.IsPresent)
 
-    if ($UseGui.IsPresent) {
+    if ($shouldUseGui) {
         try {
-            return Invoke-SelectionGui -InitialEnabledPkgs $presetSelection
+            $defaultSelection = Set-PresetSelection -Preset Professional
+            return Invoke-SelectionGui -InitialEnabledPkgs $defaultSelection
         }
         catch {
             Write-Warn "GUI mode failed: $($_.Exception.Message)"
             Write-Warn "Falling back to console selector."
             Start-Sleep -Seconds 2
-            return Invoke-SelectionConsole -InitialEnabledPkgs $presetSelection
+            return Invoke-SelectionConsole -InitialEnabledPkgs $null
         }
     }
 
-    return Invoke-SelectionConsole -InitialEnabledPkgs $presetSelection
+    return Invoke-SelectionConsole -InitialEnabledPkgs $null
 }
 
 # ---------------------------------------------------------------------------
