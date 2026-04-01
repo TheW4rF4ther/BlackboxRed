@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Blackbox Intelligence Group LLC — CommandoVM Red Team Setup Script
+    Blackbox Intelligence Group LLC - CommandoVM Red Team Setup Script
     Interactive category/package selector + one-click installer launcher.
 
 .DESCRIPTION
@@ -299,19 +299,16 @@ function Write-Banner {
     Clear-Host
     Write-Host @"
 
-  ██████╗ ██╗      █████╗  ██████╗██╗  ██╗██████╗  ██████╗ ██╗  ██╗
-  ██╔══██╗██║     ██╔══██╗██╔════╝██║ ██╔╝██╔══██╗██╔═══██╗╚██╗██╔╝
-  ██████╔╝██║     ███████║██║     █████╔╝ ██████╔╝██║   ██║ ╚███╔╝
-  ██╔══██╗██║     ██╔══██║██║     ██╔═██╗ ██╔══██╗██║   ██║ ██╔██╗
-  ██████╔╝███████╗██║  ██║╚██████╗██║  ██╗██████╔╝╚██████╔╝██╔╝ ██╗
-  ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝
+    ================================================================
+     BLACKBOX RED - OPERATOR INSTALLER
+    ================================================================
 
   Blackbox Intelligence Group LLC  |  Red Team VM Setup
   Profile: BlackboxRed  |  Base: Mandiant CommandoVM 3.0
 "@ -ForegroundColor Red
 }
 
-function Write-Divider { Write-Host ("─" * 74) -ForegroundColor DarkGray }
+function Write-Divider { Write-Host ("-" * 74) -ForegroundColor DarkGray }
 function Write-Step    { param([string]$M); Write-Host "`n[*] $M" -ForegroundColor Cyan }
 function Write-OK      { param([string]$M); Write-Host "    [+] $M" -ForegroundColor Green }
 function Write-Warn    { param([string]$M); Write-Host "    [!] $M" -ForegroundColor Yellow }
@@ -477,7 +474,7 @@ function Show-CategoryMenu {
     param($EnabledPkgs)
 
     Write-Banner
-    Write-Host "`n  PACKAGE SELECTION  —  All categories enabled by default" -ForegroundColor White
+    Write-Host "`n  PACKAGE SELECTION  -  All categories enabled by default" -ForegroundColor White
     Write-Host "  Toggle entire categories or drill in to control individual tools`n" -ForegroundColor DarkGray
     Write-Divider
 
@@ -519,7 +516,7 @@ function Show-DrillMenu {
     param([string]$Cat, $EnabledPkgs)
 
     Write-Banner
-    Write-Host "`n  DRILL-DOWN  —  $Cat" -ForegroundColor White
+    Write-Host "`n  DRILL-DOWN  -  $Cat" -ForegroundColor White
     Write-Divider
 
     $pkgs = $Catalog[$Cat]
@@ -1153,17 +1150,17 @@ function Invoke-PreChecks {
     try {
         $def = Get-MpPreference -ErrorAction SilentlyContinue
         if ($def.DisableRealtimeMonitoring) { Write-OK "Defender real-time protection: Disabled" }
-        else { Write-Warn "Defender real-time protection ENABLED — disable via Group Policy first"; $ok = $false }
-    } catch { Write-Warn "Could not query Defender status — verify manually" }
+        else { Write-Warn "Defender real-time protection ENABLED - disable via Group Policy first"; $ok = $false }
+    } catch { Write-Warn "Could not query Defender status - verify manually" }
 
     $build     = [System.Environment]::OSVersion.Version.Build
     $supported = @(19045, 22621, 22631, 26100)
     if ($build -in $supported) { Write-OK "OS build $build is supported" }
-    else { Write-Warn "OS build $build not in tested list — continuing at your risk" }
+    else { Write-Warn "OS build $build not in tested list - continuing at your risk" }
 
     $freeGB = [math]::Round((Get-PSDrive (Get-Location).Drive.Name).Free / 1GB, 1)
     if ($freeGB -ge 90) { Write-OK "Free disk space: ${freeGB} GB" }
-    else { Write-Warn "Free disk: ${freeGB} GB — 90+ GB recommended"; $ok = $false }
+    else { Write-Warn "Free disk: ${freeGB} GB - 90+ GB recommended"; $ok = $false }
 
     return $ok
 }
@@ -1173,7 +1170,7 @@ function Invoke-PreChecks {
 # ---------------------------------------------------------------------------
 function Install-GitIfMissing {
     if (Get-Command git -ErrorAction SilentlyContinue) { return }
-    Write-Step "Git not found — attempting auto-install..."
+    Write-Step "Git not found - attempting auto-install..."
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
     } else {
@@ -1291,7 +1288,7 @@ function Invoke-CommandoInstaller {
         if ($Password -ne "") { $installArgs += "-password `"$Password`"" }
         Write-OK "Mode: CLI headless"
     } else {
-        Write-OK "Mode: GUI — select 'BlackboxRed-Custom' from the Profile dropdown"
+        Write-OK "Mode: GUI - select 'BlackboxRed-Custom' from the Profile dropdown"
     }
 
     $argStr = $installArgs -join " "
@@ -1307,7 +1304,7 @@ Set-ItemProperty -Path 'HKCU:\Console' -Name 'InsertMode' -Value 0 -ErrorAction 
 
 Write-Banner
 
-# Step 1 — Pre-checks
+# Step 1 - Pre-checks
 if (-not $SkipChecks.IsPresent) {
     $ok = Invoke-PreChecks
     if (-not $ok) {
@@ -1319,7 +1316,7 @@ if (-not $SkipChecks.IsPresent) {
     Write-Warn "Pre-install checks skipped (-SkipChecks)"
 }
 
-# Step 2 — Interactive package selection
+# Step 2 - Interactive package selection
 if ($UseGui.IsPresent) {
     Write-Host "`n  Press ENTER to launch the BlackboxRed package designer..." -ForegroundColor DarkGray
 } else {
@@ -1328,7 +1325,7 @@ if ($UseGui.IsPresent) {
 $null = Read-Host
 $selectedPkgs = Invoke-SelectionMenu
 
-# Step 3 — Confirm summary before proceeding
+# Step 3 - Confirm summary before proceeding
 Write-Banner
 Write-Step "Install summary"
 Write-Divider
@@ -1352,7 +1349,7 @@ Write-Host ""
 $confirm = Read-Host "  Proceed with installation? (y/N)"
 if ($confirm -notin @('y','Y')) { Write-Host "`nCancelled.`n" -ForegroundColor Red; exit 0 }
 
-# Step 4 — Build profile, clone, inject, launch
+# Step 4 - Build profile, clone, inject, launch
 try {
     New-ProfileXml    -EnabledPkgs $selectedPkgs
     Install-GitIfMissing
@@ -1365,7 +1362,7 @@ try {
     Invoke-CommandoInstaller
 
     Write-Host "`n[+] Setup complete. Watch the Boxstarter window for progress." -ForegroundColor Green
-    Write-Host "    Expect multiple automatic reboots — installation will resume after each one.`n" -ForegroundColor Green
+    Write-Host "    Expect multiple automatic reboots - installation will resume after each one.`n" -ForegroundColor Green
 
 } catch {
     Write-Host "`n[!] FATAL: $($_.Exception.Message)`n" -ForegroundColor Red
