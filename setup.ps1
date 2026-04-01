@@ -443,10 +443,29 @@ function Show-SelectionHelp {
   HOW TO USE THIS MENU
   - Enter a category number to toggle that category ON/OFF.
   - Use D<n> to drill into a category and toggle individual tools.
+    - Use L<n> to list all tools in a category without changing selections.
   - Use P to preview selected categories and package counts.
   - Use A or N for global enable/disable, then fine-tune as needed.
 
 "@ -ForegroundColor DarkGray
+}
+
+function Show-CategoryToolList {
+        param([string]$CategoryName)
+
+        Write-Banner
+        Write-Host "`n  TOOLS IN CATEGORY - $CategoryName" -ForegroundColor White
+        Write-Divider
+
+        $items = $Catalog[$CategoryName]
+        for ($i = 0; $i -lt $items.Count; $i++) {
+                $item = $items[$i]
+                Write-Host ("  {0,2}. {1,-34} ({2})" -f ($i + 1), $item.Name, $item.Pkg) -ForegroundColor White
+                Write-Host ("      {0}" -f $item.Note) -ForegroundColor DarkGray
+        }
+
+        Write-Divider
+        Read-Host "  Press ENTER to return"
 }
 
 function Show-SelectionPreview {
@@ -504,6 +523,7 @@ function Show-CategoryMenu {
 
   Enter a number to toggle that category ON/OFF
   D<n>   Drill into a category for per-tool control  (e.g. D5)
+    L<n>   List tools in a category (e.g. L5)
     A      Enable ALL    N  Disable ALL
     P      Preview       H  Help
     C      Confirm & continue    Q  Quit
@@ -584,6 +604,13 @@ function Invoke-SelectionConsole {
                     $idx = [int]$Matches[1] - 1
                     if ($idx -ge 0 -and $idx -lt $cats.Count) {
                         $drillCat = $cats[$idx]; $inDrill = $true
+                    }
+                }
+
+                '^[Ll](\d+)$' {
+                    $idx = [int]$Matches[1] - 1
+                    if ($idx -ge 0 -and $idx -lt $cats.Count) {
+                        Show-CategoryToolList -CategoryName $cats[$idx]
                     }
                 }
 
@@ -1346,8 +1373,13 @@ Write-Host ("  Estimated disk footprint : ") -NoNewline -ForegroundColor DarkGra
 Write-Host ("~{0} GB" -f $estimateGb) -ForegroundColor Cyan
 Write-Host ""
 
-$confirm = Read-Host "  Proceed with installation? (y/N)"
-if ($confirm -notin @('y','Y')) { Write-Host "`nCancelled.`n" -ForegroundColor Red; exit 0 }
+$confirm = Read-Host "  Proceed with installation? (Y/C to continue, N to cancel)"
+if ($confirm -in @('', 'y', 'Y', 'c', 'C', 'yes', 'YES', 'Yes')) {
+    # Continue.
+} else {
+    Write-Host "`nCancelled.`n" -ForegroundColor Red
+    exit 0
+}
 
 # Step 4 - Build profile, clone, inject, launch
 try {
