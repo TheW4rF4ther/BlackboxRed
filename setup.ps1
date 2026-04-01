@@ -8,12 +8,19 @@
       1. Validates pre-install requirements
       2. Presents an interactive category/package selection menu
       3. Generates a filtered BlackboxRed-Custom.xml based on your selections
-    4. Clones the Mandiant commando-vm repository
-    5. Injects generated profile and Blackbox RED wallpaper branding
-    6. Launches the CommandoVM installer
+            4. Prepares a configurable installer source (local or git clone)
+            5. Injects generated profile and Blackbox RED wallpaper branding
+            6. Launches the installer
 
 .PARAMETER SkipClone
-    Reuse an existing commando-vm clone instead of cloning fresh.
+    Do not clone/update installer source. Requires a valid local InstallerRoot.
+
+.PARAMETER InstallerRoot
+    Local path to the Commando-compatible installer source tree.
+    Must contain install.ps1, Images, and Profiles.
+
+.PARAMETER InstallerRepoUrl
+    Optional git URL used to clone installer source into InstallerRoot when missing.
 
 .PARAMETER NoPassword
     Pass when the Windows account has no password set.
@@ -24,11 +31,15 @@
 .PARAMETER CLI
     Launch CommandoVM installer in headless CLI mode (no GUI).
 
+.PARAMETER UseGui
+    Enable a Windows Forms package selection interface for fine-tuning.
+
 .PARAMETER Password
     Windows account password for Boxstarter reboot-resilience (CLI mode).
 
 .EXAMPLE
     .\setup.ps1
+    .\setup.ps1 -UseGui
     .\setup.ps1 -CLI -Password "YourPassword"
     .\setup.ps1 -SkipClone -SkipChecks
 #>
@@ -39,7 +50,10 @@ param (
     [switch]$NoPassword,
     [switch]$SkipChecks,
     [switch]$CLI,
-    [string]$Password = ""
+    [switch]$UseGui,
+    [string]$Password = "",
+    [string]$InstallerRoot = "",
+    [string]$InstallerRepoUrl = ""
 )
 
 #Requires -RunAsAdministrator
@@ -50,11 +64,10 @@ $ErrorActionPreference = "Stop"
 # ---------------------------------------------------------------------------
 # CONFIGURATION
 # ---------------------------------------------------------------------------
-$RepoUrl          = "https://github.com/mandiant/commando-vm.git"
-$RepoDestination  = Join-Path $PSScriptRoot "commando-vm"
+$InstallerRoot    = if ([string]::IsNullOrWhiteSpace($InstallerRoot)) { Join-Path $PSScriptRoot "BlackboxRed-Core" } else { $InstallerRoot }
 $GeneratedProfile = Join-Path $PSScriptRoot "Profiles\BlackboxRed-Custom.xml"
-$ProfileDest      = Join-Path $RepoDestination "Profiles\BlackboxRed-Custom.xml"
-$InstallScript    = Join-Path $RepoDestination "install.ps1"
+$ProfileDest      = Join-Path $InstallerRoot "Profiles\BlackboxRed-Custom.xml"
+$InstallScript    = Join-Path $InstallerRoot "install.ps1"
 $WallpaperSource  = Join-Path $PSScriptRoot "Assets\blackboxredwallpaper.png"
 
 # ---------------------------------------------------------------------------
@@ -249,10 +262,45 @@ function Write-OK      { param([string]$M); Write-Host "    [+] $M" -ForegroundC
 function Write-Warn    { param([string]$M); Write-Host "    [!] $M" -ForegroundColor Yellow }
 function Write-Fail    { param([string]$M); Write-Host "    [-] $M" -ForegroundColor Red }
 
+function Get-EstimatedDiskGb {
+    param([int]$SelectedPackageCount)
+    # Rough sizing heuristic for planning purposes in the selection UI.
+    $estimate = 24 + ($SelectedPackageCount * 0.55)
+    return [math]::Round([math]::Max($estimate, 50), 1)
+}
+
 # ---------------------------------------------------------------------------
 # INTERACTIVE SELECTION MENU
 # $EnabledPkgs = hashtable { CategoryName -> List<string> of enabled pkg IDs }
 # ---------------------------------------------------------------------------
+function Get-SelectedPackageCount {
+    param($EnabledPkgs)
+    return ($EnabledPkgs.Values | ForEach-Object { $_ } | Measure-Object).Count
+}
+
+function New-BlankEnabledPkgs {
+    $ep = [ordered]@{}
+    foreach ($cat in $Catalog.Keys) {
+        $ep[$cat] = [System.Collections.Generic.List[string]]::new()
+    }
+    return $ep
+}
+
+function Copy-EnabledPkgs {
+    param($SourceEnabledPkgs)
+
+    $copy = [ordered]@{}
+    foreach ($cat in $Catalog.Keys) {
+        $copy[$cat] = [System.Collections.Generic.List[string]]::new()
+        if ($null -ne $SourceEnabledPkgs -and $SourceEnabledPkgs.ContainsKey($cat)) {
+            foreach ($pkgId in $SourceEnabledPkgs[$cat]) {
+                $copy[$cat].Add($pkgId)
+            }
+        }
+    }
+    return $copy
+}
+
 function New-EnabledPkgs {
     # Default: everything ON
     $ep = [ordered]@{}
@@ -261,6 +309,113 @@ function New-EnabledPkgs {
         foreach ($pkg in $Catalog[$cat]) { $ep[$cat].Add($pkg.Pkg) }
     }
     return $ep
+}
+
+function Set-PresetSelection {
+    param(
+        [ValidateSet("Professional", "Lean", "Cloud", "Blank")]
+        [string]$Preset
+    )
+
+    $ep = New-BlankEnabledPkgs
+
+    switch ($Preset) {
+        "Professional" {
+            return New-EnabledPkgs
+        }
+        "Blank" {
+            return $ep
+        }
+        "Lean" {
+            $enableCategories = @(
+                "Utilities & Productivity",
+                "Network Reconnaissance",
+                "Web & Database",
+                "Active Directory & Identity",
+                "Privilege Escalation",
+                "Credential Access",
+                "Lateral Movement & Execution"
+            )
+        }
+        "Cloud" {
+            $enableCategories = @(
+                "Utilities & Productivity",
+                "Development -- Payload Compilation",
+                "Network Reconnaissance",
+                "Cloud -- Azure / AWS / Entra ID",
+                "Active Directory & Identity",
+                "Privilege Escalation",
+                "Credential Access",
+                "Lateral Movement & Execution"
+            )
+        }
+    }
+
+    foreach ($cat in $enableCategories) {
+        if (-not $Catalog.ContainsKey($cat)) { continue }
+        foreach ($pkg in $Catalog[$cat]) {
+            $ep[$cat].Add($pkg.Pkg)
+        }
+    }
+    return $ep
+}
+
+function Invoke-QuickStartPreset {
+    Write-Banner
+    Write-Host "`n  QUICK START" -ForegroundColor White
+    Write-Host "  Choose a preset, then fine-tune categories and tools.`n" -ForegroundColor DarkGray
+    Write-Divider
+    Write-Host "  1. Professional (recommended)  - all capabilities enabled" -ForegroundColor White
+    Write-Host "  2. Lean Operator               - streamlined engagement build" -ForegroundColor White
+    Write-Host "  3. Cloud Operations            - prioritize cloud and identity tooling" -ForegroundColor White
+    Write-Host "  4. Start Blank                 - begin with no packages enabled" -ForegroundColor White
+    Write-Divider
+
+    while ($true) {
+        $choice = (Read-Host "  Select preset [1-4] (default 1)").Trim()
+        if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
+
+        switch ($choice) {
+            "1" { return Set-PresetSelection -Preset Professional }
+            "2" { return Set-PresetSelection -Preset Lean }
+            "3" { return Set-PresetSelection -Preset Cloud }
+            "4" { return Set-PresetSelection -Preset Blank }
+            default { Write-Warn "Invalid choice. Please enter 1, 2, 3, or 4." }
+        }
+    }
+}
+
+function Show-SelectionHelp {
+    Write-Host @"
+
+  HOW TO USE THIS MENU
+  - Enter a category number to toggle that category ON/OFF.
+  - Use D<n> to drill into a category and toggle individual tools.
+  - Use P to preview selected categories and package counts.
+  - Use A or N for global enable/disable, then fine-tune as needed.
+
+"@ -ForegroundColor DarkGray
+}
+
+function Show-SelectionPreview {
+    param($EnabledPkgs)
+
+    Write-Banner
+    Write-Host "`n  SELECTION PREVIEW" -ForegroundColor White
+    Write-Divider
+
+    foreach ($cat in $Catalog.Keys) {
+        $count = $EnabledPkgs[$cat].Count
+        if ($count -gt 0) {
+            Write-Host ("  {0,-46} {1,3} package(s)" -f $cat, $count) -ForegroundColor White
+        }
+    }
+
+    Write-Divider
+    $total = Get-SelectedPackageCount -EnabledPkgs $EnabledPkgs
+    Write-Host ("  TOTAL SELECTED: {0}" -f $total) -ForegroundColor Cyan
+    Write-Host ""
+    Read-Host "  Press ENTER to return"
 }
 
 function Show-CategoryMenu {
@@ -290,14 +445,16 @@ function Show-CategoryMenu {
     }
 
     Write-Divider
-    $grand = ($EnabledPkgs.Values | ForEach-Object { $_ } | Measure-Object).Count
+        $grand = Get-SelectedPackageCount -EnabledPkgs $EnabledPkgs
     Write-Host ("  Selected: ") -NoNewline -ForegroundColor DarkGray
     Write-Host ("{0} packages total" -f $grand) -ForegroundColor Cyan
     Write-Host @"
 
   Enter a number to toggle that category ON/OFF
   D<n>   Drill into a category for per-tool control  (e.g. D5)
-  A      Enable ALL    N  Disable ALL    C  Confirm & continue    Q  Quit
+    A      Enable ALL    N  Disable ALL
+    P      Preview       H  Help
+    C      Confirm & continue    Q  Quit
 "@ -ForegroundColor DarkGray
 
     return $cats
@@ -329,8 +486,15 @@ function Show-DrillMenu {
 "@ -ForegroundColor DarkGray
 }
 
-function Invoke-SelectionMenu {
-    $ep      = New-EnabledPkgs
+function Invoke-SelectionConsole {
+    param($InitialEnabledPkgs)
+
+    $ep = if ($null -eq $InitialEnabledPkgs) {
+        Invoke-QuickStartPreset
+    } else {
+        Copy-EnabledPkgs -SourceEnabledPkgs $InitialEnabledPkgs
+    }
+
     $inDrill = $false
     $drillCat = ""
 
@@ -343,10 +507,13 @@ function Invoke-SelectionMenu {
                 '^[Qq]$' { Write-Host "`n  Cancelled.`n" -ForegroundColor Red; exit 0 }
 
                 '^[Cc]$' {
-                    $total = ($ep.Values | ForEach-Object { $_ } | Measure-Object).Count
+                    $total = Get-SelectedPackageCount -EnabledPkgs $ep
                     if ($total -eq 0) { Write-Warn "No packages selected."; Start-Sleep 2 }
                     else { return $ep }
                 }
+
+                '^[Pp]$' { Show-SelectionPreview -EnabledPkgs $ep }
+                '^[Hh]$' { Show-SelectionHelp; Start-Sleep -Seconds 2 }
 
                 '^[Aa]$' {
                     foreach ($cat in $Catalog.Keys) {
@@ -380,6 +547,11 @@ function Invoke-SelectionMenu {
                         }
                     }
                 }
+
+                default {
+                    Write-Warn "Unrecognized command. Use H for help."
+                    Start-Sleep -Seconds 1
+                }
             }
         }
         else {
@@ -407,9 +579,306 @@ function Invoke-SelectionMenu {
                         else { $ep[$drillCat].Add($id) }
                     }
                 }
+
+                default {
+                    Write-Warn "Unrecognized command. Use a number, A, N, or B."
+                    Start-Sleep -Seconds 1
+                }
             }
         }
     }
+}
+
+function Invoke-SelectionGui {
+    param($InitialEnabledPkgs)
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $ep = Copy-EnabledPkgs -SourceEnabledPkgs $InitialEnabledPkgs
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "BlackboxRed Installer - Package Designer"
+    $form.StartPosition = "CenterScreen"
+    $form.Size = New-Object System.Drawing.Size(1180, 760)
+    $form.MinimumSize = New-Object System.Drawing.Size(1024, 700)
+
+    $header = New-Object System.Windows.Forms.Label
+    $header.Location = New-Object System.Drawing.Point(16, 14)
+    $header.AutoSize = $true
+    $header.Font = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
+    $header.Text = "BlackboxRed Package Designer"
+
+    $subHeader = New-Object System.Windows.Forms.Label
+    $subHeader.Location = New-Object System.Drawing.Point(18, 42)
+    $subHeader.Size = New-Object System.Drawing.Size(1100, 32)
+    $subHeader.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $subHeader.Text = "Choose a category on the left, then check/uncheck packages on the right. Use presets in console first, then fine tune here."
+
+    $categoryLabel = New-Object System.Windows.Forms.Label
+    $categoryLabel.Location = New-Object System.Drawing.Point(18, 86)
+    $categoryLabel.AutoSize = $true
+    $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $categoryLabel.Text = "Categories"
+
+    $categoryList = New-Object System.Windows.Forms.ListBox
+    $categoryList.Location = New-Object System.Drawing.Point(18, 110)
+    $categoryList.Size = New-Object System.Drawing.Size(330, 490)
+    $categoryList.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $packageLabel = New-Object System.Windows.Forms.Label
+    $packageLabel.Location = New-Object System.Drawing.Point(366, 86)
+    $packageLabel.AutoSize = $true
+    $packageLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $packageLabel.Text = "Packages"
+
+    $searchBox = New-Object System.Windows.Forms.TextBox
+    $searchBox.Location = New-Object System.Drawing.Point(430, 84)
+    $searchBox.Size = New-Object System.Drawing.Size(320, 23)
+    $searchBox.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $searchLabel = New-Object System.Windows.Forms.Label
+    $searchLabel.Location = New-Object System.Drawing.Point(756, 87)
+    $searchLabel.AutoSize = $true
+    $searchLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
+    $searchLabel.Text = "Filter current category"
+
+    $packageList = New-Object System.Windows.Forms.CheckedListBox
+    $packageList.Location = New-Object System.Drawing.Point(366, 110)
+    $packageList.Size = New-Object System.Drawing.Size(785, 490)
+    $packageList.CheckOnClick = $true
+    $packageList.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Location = New-Object System.Drawing.Point(18, 614)
+    $statusLabel.Size = New-Object System.Drawing.Size(770, 22)
+    $statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+
+    $estimateLabel = New-Object System.Windows.Forms.Label
+    $estimateLabel.Location = New-Object System.Drawing.Point(18, 638)
+    $estimateLabel.Size = New-Object System.Drawing.Size(770, 20)
+    $estimateLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $btnEnableCat = New-Object System.Windows.Forms.Button
+    $btnEnableCat.Location = New-Object System.Drawing.Point(806, 610)
+    $btnEnableCat.Size = New-Object System.Drawing.Size(112, 32)
+    $btnEnableCat.Text = "Enable Category"
+
+    $btnDisableCat = New-Object System.Windows.Forms.Button
+    $btnDisableCat.Location = New-Object System.Drawing.Point(924, 610)
+    $btnDisableCat.Size = New-Object System.Drawing.Size(112, 32)
+    $btnDisableCat.Text = "Disable Category"
+
+    $btnEnableAll = New-Object System.Windows.Forms.Button
+    $btnEnableAll.Location = New-Object System.Drawing.Point(806, 650)
+    $btnEnableAll.Size = New-Object System.Drawing.Size(112, 32)
+    $btnEnableAll.Text = "Enable All"
+
+    $btnDisableAll = New-Object System.Windows.Forms.Button
+    $btnDisableAll.Location = New-Object System.Drawing.Point(924, 650)
+    $btnDisableAll.Size = New-Object System.Drawing.Size(112, 32)
+    $btnDisableAll.Text = "Disable All"
+
+    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel.Location = New-Object System.Drawing.Point(1042, 650)
+    $btnCancel.Size = New-Object System.Drawing.Size(109, 32)
+    $btnCancel.Text = "Cancel"
+
+    $btnContinue = New-Object System.Windows.Forms.Button
+    $btnContinue.Location = New-Object System.Drawing.Point(1042, 610)
+    $btnContinue.Size = New-Object System.Drawing.Size(109, 32)
+    $btnContinue.Text = "Continue"
+
+    $form.Controls.AddRange(@(
+        $header,
+        $subHeader,
+        $categoryLabel,
+        $categoryList,
+        $packageLabel,
+        $searchBox,
+        $searchLabel,
+        $packageList,
+        $statusLabel,
+        $estimateLabel,
+        $btnEnableCat,
+        $btnDisableCat,
+        $btnEnableAll,
+        $btnDisableAll,
+        $btnContinue,
+        $btnCancel
+    ))
+
+    $script:GuiCategoryNames = @($Catalog.Keys)
+    $script:GuiCurrentCategory = $script:GuiCategoryNames[0]
+    $script:GuiVisibleMap = @()
+    $script:GuiUpdatingChecks = $false
+
+    function Refresh-GuiTotals {
+        $selectedCount = Get-SelectedPackageCount -EnabledPkgs $ep
+        $totalAvailable = ($Catalog.Values | ForEach-Object { $_ } | Measure-Object).Count
+        $statusLabel.Text = "Selected packages: $selectedCount / $totalAvailable"
+        $estimateGb = Get-EstimatedDiskGb -SelectedPackageCount $selectedCount
+        $estimateLabel.Text = "Estimated required disk footprint: ~${estimateGb} GB"
+    }
+
+    function Refresh-GuiCategoryList {
+        $categoryList.BeginUpdate()
+        $selectedIndex = $categoryList.SelectedIndex
+        $categoryList.Items.Clear()
+
+        foreach ($cat in $script:GuiCategoryNames) {
+            $on = $ep[$cat].Count
+            $total = $Catalog[$cat].Count
+            $categoryList.Items.Add("$cat  ($on/$total)") | Out-Null
+        }
+
+        if ($selectedIndex -lt 0) { $selectedIndex = 0 }
+        if ($selectedIndex -ge $categoryList.Items.Count) { $selectedIndex = $categoryList.Items.Count - 1 }
+        if ($selectedIndex -ge 0) { $categoryList.SelectedIndex = $selectedIndex }
+        $categoryList.EndUpdate()
+    }
+
+    function Refresh-GuiPackageList {
+        $script:GuiUpdatingChecks = $true
+        $packageList.BeginUpdate()
+        $packageList.Items.Clear()
+        $script:GuiVisibleMap = @()
+
+        $filter = $searchBox.Text.Trim().ToLowerInvariant()
+        $catPkgs = $Catalog[$script:GuiCurrentCategory]
+
+        for ($idx = 0; $idx -lt $catPkgs.Count; $idx++) {
+            $pkg = $catPkgs[$idx]
+            $display = "{0}  |  {1}" -f $pkg.Name, $pkg.Note
+
+            if ($filter -ne "") {
+                $hay = ("{0} {1} {2}" -f $pkg.Name, $pkg.Pkg, $pkg.Note).ToLowerInvariant()
+                if (-not $hay.Contains($filter)) { continue }
+            }
+
+            $newIndex = $packageList.Items.Add($display)
+            $script:GuiVisibleMap += $idx
+            $isChecked = $ep[$script:GuiCurrentCategory] -contains $pkg.Pkg
+            $packageList.SetItemChecked($newIndex, $isChecked)
+        }
+
+        $packageList.EndUpdate()
+        $script:GuiUpdatingChecks = $false
+        Refresh-GuiTotals
+    }
+
+    Refresh-GuiCategoryList
+    $categoryList.SelectedIndex = 0
+
+    $categoryList.Add_SelectedIndexChanged({
+        if ($categoryList.SelectedIndex -lt 0) { return }
+        $script:GuiCurrentCategory = $script:GuiCategoryNames[$categoryList.SelectedIndex]
+        Refresh-GuiPackageList
+    })
+
+    $searchBox.Add_TextChanged({ Refresh-GuiPackageList })
+
+    $packageList.Add_ItemCheck({
+        if ($script:GuiUpdatingChecks) { return }
+        if ($e.Index -lt 0 -or $e.Index -ge $script:GuiVisibleMap.Count) { return }
+
+        $catPkgIdx = $script:GuiVisibleMap[$e.Index]
+        $pkgId = $Catalog[$script:GuiCurrentCategory][$catPkgIdx].Pkg
+
+        if ($e.NewValue -eq [System.Windows.Forms.CheckState]::Checked) {
+            if (-not ($ep[$script:GuiCurrentCategory] -contains $pkgId)) {
+                $ep[$script:GuiCurrentCategory].Add($pkgId)
+            }
+        } else {
+            [void]$ep[$script:GuiCurrentCategory].Remove($pkgId)
+        }
+
+        Refresh-GuiCategoryList
+        Refresh-GuiTotals
+    })
+
+    $btnEnableCat.Add_Click({
+        foreach ($pkg in $Catalog[$script:GuiCurrentCategory]) {
+            if (-not ($ep[$script:GuiCurrentCategory] -contains $pkg.Pkg)) {
+                $ep[$script:GuiCurrentCategory].Add($pkg.Pkg)
+            }
+        }
+        Refresh-GuiCategoryList
+        Refresh-GuiPackageList
+    })
+
+    $btnDisableCat.Add_Click({
+        $ep[$script:GuiCurrentCategory] = [System.Collections.Generic.List[string]]::new()
+        Refresh-GuiCategoryList
+        Refresh-GuiPackageList
+    })
+
+    $btnEnableAll.Add_Click({
+        foreach ($cat in $Catalog.Keys) {
+            $ep[$cat] = [System.Collections.Generic.List[string]]::new()
+            foreach ($pkg in $Catalog[$cat]) { $ep[$cat].Add($pkg.Pkg) }
+        }
+        Refresh-GuiCategoryList
+        Refresh-GuiPackageList
+    })
+
+    $btnDisableAll.Add_Click({
+        foreach ($cat in $Catalog.Keys) {
+            $ep[$cat] = [System.Collections.Generic.List[string]]::new()
+        }
+        Refresh-GuiCategoryList
+        Refresh-GuiPackageList
+    })
+
+    $btnCancel.Add_Click({
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+        $form.Close()
+    })
+
+    $btnContinue.Add_Click({
+        $selectedCount = Get-SelectedPackageCount -EnabledPkgs $ep
+        if ($selectedCount -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show(
+                "No packages selected. Please select at least one package.",
+                "BlackboxRed",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            ) | Out-Null
+            return
+        }
+
+        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $form.Close()
+    })
+
+    Refresh-GuiTotals
+    Refresh-GuiPackageList
+
+    $dialogResult = $form.ShowDialog()
+    if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK) {
+        Write-Host "`n  Cancelled.`n" -ForegroundColor Red
+        exit 0
+    }
+
+    return $ep
+}
+
+function Invoke-SelectionMenu {
+    $presetSelection = Invoke-QuickStartPreset
+
+    if ($UseGui.IsPresent) {
+        try {
+            return Invoke-SelectionGui -InitialEnabledPkgs $presetSelection
+        }
+        catch {
+            Write-Warn "GUI mode failed: $($_.Exception.Message)"
+            Write-Warn "Falling back to console selector."
+            Start-Sleep -Seconds 2
+            return Invoke-SelectionConsole -InitialEnabledPkgs $presetSelection
+        }
+    }
+
+    return Invoke-SelectionConsole -InitialEnabledPkgs $presetSelection
 }
 
 # ---------------------------------------------------------------------------
@@ -519,17 +988,40 @@ function Install-GitIfMissing {
 # ---------------------------------------------------------------------------
 # CLONE REPO
 # ---------------------------------------------------------------------------
-function Invoke-CloneRepo {
-    Write-Step "Cloning mandiant/commando-vm..."
-    if (Test-Path $RepoDestination) {
-        Write-Warn "Destination already exists: $RepoDestination"
-        $c = Read-Host "    Overwrite? (y/N)"
-        if ($c -notin @('y','Y')) { throw "Aborted. Use -SkipClone to reuse existing clone." }
-        Remove-Item $RepoDestination -Recurse -Force
+function Invoke-PrepareInstallerSource {
+    Write-Step "Preparing installer source..."
+
+    $profilesDir = Join-Path $InstallerRoot "Profiles"
+    $imagesDir = Join-Path $InstallerRoot "Images"
+
+    if ((Test-Path $InstallScript) -and (Test-Path $profilesDir) -and (Test-Path $imagesDir)) {
+        Write-OK "Using local installer source: $InstallerRoot"
+        return
     }
-    git clone $RepoUrl $RepoDestination
+
+    if ($SkipClone.IsPresent) {
+        throw "Installer source is incomplete at $InstallerRoot and -SkipClone was specified."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($InstallerRepoUrl)) {
+        throw "Installer source not found at $InstallerRoot. Provide -InstallerRepoUrl to clone a compatible source."
+    }
+
+    if (Test-Path $InstallerRoot) {
+        Write-Warn "InstallerRoot exists but is incomplete: $InstallerRoot"
+        $c = Read-Host "    Overwrite and clone fresh? (y/N)"
+        if ($c -notin @('y','Y')) { throw "Aborted by user." }
+        Remove-Item $InstallerRoot -Recurse -Force
+    }
+
+    git clone $InstallerRepoUrl $InstallerRoot
     if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit $LASTEXITCODE)" }
-    Write-OK "Cloned to: $RepoDestination"
+
+    if (-not (Test-Path $InstallScript)) {
+        throw "Cloned source does not contain install.ps1 at expected path: $InstallScript"
+    }
+
+    Write-OK "Installer source ready: $InstallerRoot"
 }
 
 # ---------------------------------------------------------------------------
@@ -552,7 +1044,7 @@ function Invoke-InjectWallpaper {
         throw "Wallpaper source file not found: $WallpaperSource"
     }
 
-    $imagesDir = Join-Path $RepoDestination "Images"
+    $imagesDir = Join-Path $InstallerRoot "Images"
     if (-not (Test-Path $imagesDir)) {
         throw "CommandoVM Images directory not found: $imagesDir"
     }
@@ -572,7 +1064,7 @@ function Invoke-InjectWallpaper {
 # ---------------------------------------------------------------------------
 function Invoke-UnblockFiles {
     Write-Step "Unblocking repository files..."
-    Get-ChildItem -Path $RepoDestination -Recurse | Unblock-File
+    Get-ChildItem -Path $InstallerRoot -Recurse | Unblock-File
     Write-OK "Files unblocked"
 }
 
@@ -622,7 +1114,11 @@ if (-not $SkipChecks.IsPresent) {
 }
 
 # Step 2 — Interactive package selection
-Write-Host "`n  Press ENTER to open the package selection menu..." -ForegroundColor DarkGray
+if ($UseGui.IsPresent) {
+    Write-Host "`n  Press ENTER to launch the BlackboxRed package designer..." -ForegroundColor DarkGray
+} else {
+    Write-Host "`n  Press ENTER to open the package selection menu..." -ForegroundColor DarkGray
+}
 $null = Read-Host
 $selectedPkgs = Invoke-SelectionMenu
 
@@ -633,13 +1129,18 @@ Write-Divider
 foreach ($cat in $Catalog.Keys) {
     $n = $selectedPkgs[$cat].Count
     if ($n -gt 0) {
-        Write-Host ("  {0,-46}  {1} package(s)" -f $cat, $n) -ForegroundColor White
+        $catTotal = $Catalog[$cat].Count
+        $pct = [math]::Round(($n / $catTotal) * 100)
+        Write-Host ("  {0,-38} {1,3}/{2,-3} ({3,3}%)" -f $cat, $n, $catTotal, $pct) -ForegroundColor White
     }
 }
 Write-Divider
 $grand = ($selectedPkgs.Values | ForEach-Object { $_ } | Measure-Object).Count
+$estimateGb = Get-EstimatedDiskGb -SelectedPackageCount $grand
 Write-Host ("  Total packages to install: ") -NoNewline -ForegroundColor DarkGray
 Write-Host $grand -ForegroundColor Cyan
+Write-Host ("  Estimated disk footprint : ") -NoNewline -ForegroundColor DarkGray
+Write-Host ("~{0} GB" -f $estimateGb) -ForegroundColor Cyan
 Write-Host ""
 
 $confirm = Read-Host "  Proceed with installation? (y/N)"
@@ -650,12 +1151,7 @@ try {
     New-ProfileXml    -EnabledPkgs $selectedPkgs
     Install-GitIfMissing
 
-    if (-not $SkipClone.IsPresent) {
-        Invoke-CloneRepo
-    } else {
-        Write-Warn "Skipping clone (-SkipClone) — using: $RepoDestination"
-        if (-not (Test-Path $RepoDestination)) { throw "Repository not found at: $RepoDestination" }
-    }
+    Invoke-PrepareInstallerSource
 
     Invoke-InjectProfile
     Invoke-InjectWallpaper
