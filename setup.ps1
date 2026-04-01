@@ -688,8 +688,13 @@ function Invoke-SelectionGui {
 
     $btnExport = New-Object System.Windows.Forms.Button
     $btnExport.Location = New-Object System.Drawing.Point(806, 570)
-    $btnExport.Size = New-Object System.Drawing.Size(230, 32)
+    $btnExport.Size = New-Object System.Drawing.Size(112, 32)
     $btnExport.Text = "Export Selection Preset"
+
+    $btnImport = New-Object System.Windows.Forms.Button
+    $btnImport.Location = New-Object System.Drawing.Point(924, 570)
+    $btnImport.Size = New-Object System.Drawing.Size(112, 32)
+    $btnImport.Text = "Import Preset"
 
     $btnEnableCat = New-Object System.Windows.Forms.Button
     $btnEnableCat.Location = New-Object System.Drawing.Point(806, 610)
@@ -721,7 +726,7 @@ function Invoke-SelectionGui {
     $btnContinue.Size = New-Object System.Drawing.Size(109, 32)
     $btnContinue.Text = "Continue"
 
-    $buttonList = @($btnExport, $btnEnableCat, $btnDisableCat, $btnEnableAll, $btnDisableAll, $btnContinue, $btnCancel)
+    $buttonList = @($btnExport, $btnImport, $btnEnableCat, $btnDisableCat, $btnEnableAll, $btnDisableAll, $btnContinue, $btnCancel)
     foreach ($button in $buttonList) {
         $button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
         $button.FlatAppearance.BorderSize = 1
@@ -747,6 +752,7 @@ function Invoke-SelectionGui {
         $statusLabel,
         $estimateLabel,
         $btnExport,
+        $btnImport,
         $btnEnableCat,
         $btnDisableCat,
         $btnEnableAll,
@@ -783,6 +789,34 @@ function Invoke-SelectionGui {
             estimatedDiskGb = (Get-EstimatedDiskGb -SelectedPackageCount (Get-SelectedPackageCount -EnabledPkgs $ep))
             categories = $categoryMap
         }
+    }
+
+    function Import-SelectionPreset {
+        param([string]$PresetPath)
+
+        $jsonRaw = Get-Content -Path $PresetPath -Raw
+        $presetObj = $jsonRaw | ConvertFrom-Json
+
+        if ($null -eq $presetObj -or $null -eq $presetObj.categories) {
+            throw "Invalid preset file: missing categories object."
+        }
+
+        $newSelection = New-BlankEnabledPkgs
+
+        foreach ($cat in $Catalog.Keys) {
+            if ($null -eq $presetObj.categories.$cat) { continue }
+
+            $validPkgIds = @($Catalog[$cat] | ForEach-Object { $_.Pkg })
+            $importedPkgIds = @($presetObj.categories.$cat)
+
+            foreach ($pkgId in $importedPkgIds) {
+                if ($validPkgIds -contains $pkgId) {
+                    $newSelection[$cat].Add([string]$pkgId)
+                }
+            }
+        }
+
+        return $newSelection
     }
 
     function Refresh-GuiCategoryList {
@@ -913,6 +947,38 @@ function Invoke-SelectionGui {
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Information
         ) | Out-Null
+    })
+
+    $btnImport.Add_Click({
+        $openDialog = New-Object System.Windows.Forms.OpenFileDialog
+        $openDialog.Title = "Import BlackboxRed Selection Preset"
+        $openDialog.Filter = "JSON files (*.json)|*.json"
+        $openDialog.InitialDirectory = (Join-Path $PSScriptRoot "Profiles")
+
+        if ($openDialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+        try {
+            $importedSelection = Import-SelectionPreset -PresetPath $openDialog.FileName
+            $ep = Copy-EnabledPkgs -SourceEnabledPkgs $importedSelection
+            Refresh-GuiCategoryList
+            Refresh-GuiPackageList
+
+            $importCount = Get-SelectedPackageCount -EnabledPkgs $ep
+            [System.Windows.Forms.MessageBox]::Show(
+                "Preset imported successfully.`nSelected packages: $importCount",
+                "BlackboxRed",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Information
+            ) | Out-Null
+        }
+        catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                "Failed to import preset:`n$($_.Exception.Message)",
+                "BlackboxRed",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
     })
 
     $btnCancel.Add_Click({
