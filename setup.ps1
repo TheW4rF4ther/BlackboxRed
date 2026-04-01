@@ -603,61 +603,93 @@ function Invoke-SelectionGui {
     $form.Size = New-Object System.Drawing.Size(1180, 760)
     $form.MinimumSize = New-Object System.Drawing.Size(1024, 700)
 
+    $themeBg = [System.Drawing.Color]::FromArgb(18, 20, 24)
+    $themePanel = [System.Drawing.Color]::FromArgb(28, 32, 38)
+    $themeInput = [System.Drawing.Color]::FromArgb(21, 24, 29)
+    $themeFg = [System.Drawing.Color]::FromArgb(230, 234, 240)
+    $themeMuted = [System.Drawing.Color]::FromArgb(150, 160, 172)
+    $themeAccent = [System.Drawing.Color]::FromArgb(194, 38, 51)
+    $themeAccentStrong = [System.Drawing.Color]::FromArgb(230, 65, 80)
+
+    $form.BackColor = $themeBg
+    $form.ForeColor = $themeFg
+
     $header = New-Object System.Windows.Forms.Label
     $header.Location = New-Object System.Drawing.Point(16, 14)
     $header.AutoSize = $true
     $header.Font = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
     $header.Text = "BlackboxRed Package Designer"
+    $header.ForeColor = $themeAccentStrong
 
     $subHeader = New-Object System.Windows.Forms.Label
     $subHeader.Location = New-Object System.Drawing.Point(18, 42)
     $subHeader.Size = New-Object System.Drawing.Size(1100, 32)
     $subHeader.Font = New-Object System.Drawing.Font("Segoe UI", 9)
     $subHeader.Text = "Choose a category on the left, then check/uncheck packages on the right. Use presets in console first, then fine tune here."
+    $subHeader.ForeColor = $themeMuted
 
     $categoryLabel = New-Object System.Windows.Forms.Label
     $categoryLabel.Location = New-Object System.Drawing.Point(18, 86)
     $categoryLabel.AutoSize = $true
     $categoryLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $categoryLabel.Text = "Categories"
+    $categoryLabel.ForeColor = $themeFg
 
     $categoryList = New-Object System.Windows.Forms.ListBox
     $categoryList.Location = New-Object System.Drawing.Point(18, 110)
     $categoryList.Size = New-Object System.Drawing.Size(330, 490)
     $categoryList.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $categoryList.BackColor = $themeInput
+    $categoryList.ForeColor = $themeFg
+    $categoryList.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
     $packageLabel = New-Object System.Windows.Forms.Label
     $packageLabel.Location = New-Object System.Drawing.Point(366, 86)
     $packageLabel.AutoSize = $true
     $packageLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $packageLabel.Text = "Packages"
+    $packageLabel.ForeColor = $themeFg
 
     $searchBox = New-Object System.Windows.Forms.TextBox
     $searchBox.Location = New-Object System.Drawing.Point(430, 84)
     $searchBox.Size = New-Object System.Drawing.Size(320, 23)
     $searchBox.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $searchBox.BackColor = $themeInput
+    $searchBox.ForeColor = $themeFg
+    $searchBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
     $searchLabel = New-Object System.Windows.Forms.Label
     $searchLabel.Location = New-Object System.Drawing.Point(756, 87)
     $searchLabel.AutoSize = $true
     $searchLabel.Font = New-Object System.Drawing.Font("Segoe UI", 8)
     $searchLabel.Text = "Filter current category"
+    $searchLabel.ForeColor = $themeMuted
 
     $packageList = New-Object System.Windows.Forms.CheckedListBox
     $packageList.Location = New-Object System.Drawing.Point(366, 110)
     $packageList.Size = New-Object System.Drawing.Size(785, 490)
     $packageList.CheckOnClick = $true
     $packageList.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $packageList.BackColor = $themeInput
+    $packageList.ForeColor = $themeFg
+    $packageList.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
 
     $statusLabel = New-Object System.Windows.Forms.Label
     $statusLabel.Location = New-Object System.Drawing.Point(18, 614)
     $statusLabel.Size = New-Object System.Drawing.Size(770, 22)
     $statusLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $statusLabel.ForeColor = $themeFg
 
     $estimateLabel = New-Object System.Windows.Forms.Label
     $estimateLabel.Location = New-Object System.Drawing.Point(18, 638)
     $estimateLabel.Size = New-Object System.Drawing.Size(770, 20)
     $estimateLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $estimateLabel.ForeColor = $themeMuted
+
+    $btnExport = New-Object System.Windows.Forms.Button
+    $btnExport.Location = New-Object System.Drawing.Point(806, 570)
+    $btnExport.Size = New-Object System.Drawing.Size(230, 32)
+    $btnExport.Text = "Export Selection Preset"
 
     $btnEnableCat = New-Object System.Windows.Forms.Button
     $btnEnableCat.Location = New-Object System.Drawing.Point(806, 610)
@@ -689,6 +721,20 @@ function Invoke-SelectionGui {
     $btnContinue.Size = New-Object System.Drawing.Size(109, 32)
     $btnContinue.Text = "Continue"
 
+    $buttonList = @($btnExport, $btnEnableCat, $btnDisableCat, $btnEnableAll, $btnDisableAll, $btnContinue, $btnCancel)
+    foreach ($button in $buttonList) {
+        $button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $button.FlatAppearance.BorderSize = 1
+        $button.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(56, 62, 74)
+        $button.BackColor = $themePanel
+        $button.ForeColor = $themeFg
+        $button.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    }
+
+    $btnContinue.BackColor = $themeAccent
+    $btnContinue.FlatAppearance.BorderColor = $themeAccentStrong
+    $btnContinue.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+
     $form.Controls.AddRange(@(
         $header,
         $subHeader,
@@ -700,6 +746,7 @@ function Invoke-SelectionGui {
         $packageList,
         $statusLabel,
         $estimateLabel,
+        $btnExport,
         $btnEnableCat,
         $btnDisableCat,
         $btnEnableAll,
@@ -719,6 +766,23 @@ function Invoke-SelectionGui {
         $statusLabel.Text = "Selected packages: $selectedCount / $totalAvailable"
         $estimateGb = Get-EstimatedDiskGb -SelectedPackageCount $selectedCount
         $estimateLabel.Text = "Estimated required disk footprint: ~${estimateGb} GB"
+    }
+
+    function Get-SelectionExportObject {
+        $categoryMap = [ordered]@{}
+        foreach ($cat in $Catalog.Keys) {
+            $selectedIds = @($ep[$cat])
+            if ($selectedIds.Count -eq 0) { continue }
+            $categoryMap[$cat] = $selectedIds
+        }
+
+        return [ordered]@{
+            name = "BlackboxRed Custom Preset"
+            createdOnUtc = [DateTime]::UtcNow.ToString("o")
+            selectedPackageCount = (Get-SelectedPackageCount -EnabledPkgs $ep)
+            estimatedDiskGb = (Get-EstimatedDiskGb -SelectedPackageCount (Get-SelectedPackageCount -EnabledPkgs $ep))
+            categories = $categoryMap
+        }
     }
 
     function Refresh-GuiCategoryList {
@@ -828,6 +892,27 @@ function Invoke-SelectionGui {
         }
         Refresh-GuiCategoryList
         Refresh-GuiPackageList
+    })
+
+    $btnExport.Add_Click({
+        $saveDialog = New-Object System.Windows.Forms.SaveFileDialog
+        $saveDialog.Title = "Export BlackboxRed Selection Preset"
+        $saveDialog.Filter = "JSON files (*.json)|*.json"
+        $saveDialog.InitialDirectory = (Join-Path $PSScriptRoot "Profiles")
+        $saveDialog.FileName = "BlackboxRed-SelectionPreset.json"
+
+        if ($saveDialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+        $exportObj = Get-SelectionExportObject
+        $exportJson = $exportObj | ConvertTo-Json -Depth 8
+        Set-Content -Path $saveDialog.FileName -Value $exportJson -Encoding UTF8
+
+        [System.Windows.Forms.MessageBox]::Show(
+            "Selection preset exported to:`n$($saveDialog.FileName)",
+            "BlackboxRed",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        ) | Out-Null
     })
 
     $btnCancel.Add_Click({
