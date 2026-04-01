@@ -8,8 +8,9 @@
       1. Validates pre-install requirements
       2. Presents an interactive category/package selection menu
       3. Generates a filtered BlackboxRed-Custom.xml based on your selections
-      4. Clones the Mandiant commando-vm repository
-      5. Injects the generated profile and launches the CommandoVM installer
+    4. Clones the Mandiant commando-vm repository
+    5. Injects generated profile and Blackbox RED wallpaper branding
+    6. Launches the CommandoVM installer
 
 .PARAMETER SkipClone
     Reuse an existing commando-vm clone instead of cloning fresh.
@@ -54,6 +55,7 @@ $RepoDestination  = Join-Path $PSScriptRoot "commando-vm"
 $GeneratedProfile = Join-Path $PSScriptRoot "Profiles\BlackboxRed-Custom.xml"
 $ProfileDest      = Join-Path $RepoDestination "Profiles\BlackboxRed-Custom.xml"
 $InstallScript    = Join-Path $RepoDestination "install.ps1"
+$WallpaperSource  = Join-Path $PSScriptRoot "Assets\blackboxredwallpaper.png"
 
 # ---------------------------------------------------------------------------
 # PACKAGE CATALOG  (ordered: category -> package list)
@@ -335,9 +337,9 @@ function Invoke-SelectionMenu {
     while ($true) {
         if (-not $inDrill) {
             $cats  = Show-CategoryMenu -EnabledPkgs $ep
-            $input = (Read-Host "  > ").Trim()
+            $menuInput = (Read-Host "  > ").Trim()
 
-            switch -Regex ($input) {
+            switch -Regex ($menuInput) {
                 '^[Qq]$' { Write-Host "`n  Cancelled.`n" -ForegroundColor Red; exit 0 }
 
                 '^[Cc]$' {
@@ -367,7 +369,7 @@ function Invoke-SelectionMenu {
                 }
 
                 '^\d+$' {
-                    $idx = [int]$input - 1
+                    $idx = [int]$menuInput - 1
                     if ($idx -ge 0 -and $idx -lt $cats.Count) {
                         $cat = $cats[$idx]
                         if ($ep[$cat].Count -gt 0) {
@@ -382,10 +384,10 @@ function Invoke-SelectionMenu {
         }
         else {
             Show-DrillMenu -Cat $drillCat -EnabledPkgs $ep
-            $input = (Read-Host "  > ").Trim()
+            $menuInput = (Read-Host "  > ").Trim()
             $pkgs  = $Catalog[$drillCat]
 
-            switch -Regex ($input) {
+            switch -Regex ($menuInput) {
                 '^[Bb]$' { $inDrill = $false }
 
                 '^[Aa]$' {
@@ -398,7 +400,7 @@ function Invoke-SelectionMenu {
                 }
 
                 '^\d+$' {
-                    $idx = [int]$input - 1
+                    $idx = [int]$menuInput - 1
                     if ($idx -ge 0 -and $idx -lt $pkgs.Count) {
                         $id = $pkgs[$idx].Pkg
                         if ($ep[$drillCat] -contains $id) { $ep[$drillCat].Remove($id) | Out-Null }
@@ -541,6 +543,31 @@ function Invoke-InjectProfile {
 }
 
 # ---------------------------------------------------------------------------
+# INJECT WALLPAPER BRANDING
+# ---------------------------------------------------------------------------
+function Invoke-InjectWallpaper {
+    Write-Step "Injecting Blackbox RED wallpaper branding..."
+
+    if (-not (Test-Path $WallpaperSource)) {
+        throw "Wallpaper source file not found: $WallpaperSource"
+    }
+
+    $imagesDir = Join-Path $RepoDestination "Images"
+    if (-not (Test-Path $imagesDir)) {
+        throw "CommandoVM Images directory not found: $imagesDir"
+    }
+
+    $mainWallpaperTarget = Join-Path $imagesDir "background.png"
+    $victimWallpaperTarget = Join-Path $imagesDir "background-victim.png"
+
+    Copy-Item -Path $WallpaperSource -Destination $mainWallpaperTarget -Force
+    Copy-Item -Path $WallpaperSource -Destination $victimWallpaperTarget -Force
+
+    Write-OK "Wallpaper set: $mainWallpaperTarget"
+    Write-OK "Wallpaper set: $victimWallpaperTarget"
+}
+
+# ---------------------------------------------------------------------------
 # UNBLOCK FILES
 # ---------------------------------------------------------------------------
 function Invoke-UnblockFiles {
@@ -631,6 +658,7 @@ try {
     }
 
     Invoke-InjectProfile
+    Invoke-InjectWallpaper
     Invoke-UnblockFiles
     Invoke-CommandoInstaller
 
