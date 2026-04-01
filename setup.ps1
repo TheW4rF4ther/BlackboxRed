@@ -126,9 +126,16 @@ Restart-ElevatedIfNeeded
 # ---------------------------------------------------------------------------
 $InstallerRoot    = if ([string]::IsNullOrWhiteSpace($InstallerRoot)) { Join-Path $PSScriptRoot "BlackboxRed-Core" } else { $InstallerRoot }
 $GeneratedProfile = Join-Path $PSScriptRoot "Profiles\BlackboxRed-Custom.xml"
-$ProfileDest      = Join-Path $InstallerRoot "Profiles\BlackboxRed-Custom.xml"
-$InstallScript    = Join-Path $InstallerRoot "install.ps1"
+$ProfileDest      = ""
+$InstallScript    = ""
 $WallpaperSource  = Join-Path $PSScriptRoot "Assets\blackboxredwallpaper.png"
+
+function Update-InstallerPaths {
+    $script:ProfileDest = Join-Path $script:InstallerRoot "Profiles\BlackboxRed-Custom.xml"
+    $script:InstallScript = Join-Path $script:InstallerRoot "install.ps1"
+}
+
+Update-InstallerPaths
 
 # ---------------------------------------------------------------------------
 # PACKAGE CATALOG  (ordered: category -> package list)
@@ -1140,8 +1147,7 @@ function Invoke-SelectionGui {
 }
 
 function Invoke-SelectionMenu {
-    $useGuiByDefault = $PSVersionTable.PSEdition -eq "Desktop"
-    $shouldUseGui = ($UseGui.IsPresent -or $useGuiByDefault) -and (-not $UseConsole.IsPresent)
+    $shouldUseGui = -not $UseConsole.IsPresent
 
     if ($shouldUseGui) {
         try {
@@ -1150,9 +1156,11 @@ function Invoke-SelectionMenu {
         }
         catch {
             Write-Warn "GUI mode failed: $($_.Exception.Message)"
-            Write-Warn "Falling back to console selector."
-            Start-Sleep -Seconds 2
-            return Invoke-SelectionConsole -InitialEnabledPkgs $null
+            $fallback = (Read-Host "  Continue with console selector instead? (Y/n)").Trim()
+            if ($fallback -in @('', 'y', 'Y', 'yes', 'Yes', 'YES')) {
+                return Invoke-SelectionConsole -InitialEnabledPkgs $null
+            }
+            throw "GUI mode unavailable and console fallback declined."
         }
     }
 
@@ -1282,7 +1290,52 @@ function Invoke-PrepareInstallerSource {
     }
 
     if ([string]::IsNullOrWhiteSpace($InstallerRepoUrl)) {
-        throw "Installer source not found at $InstallerRoot. Provide -InstallerRepoUrl to clone a compatible source."
+        Write-Warn "Installer source not found at: $InstallerRoot"
+        Write-Host "" -ForegroundColor DarkGray
+        Write-Host "  Choose installer source:" -ForegroundColor White
+        Write-Host "    1. Clone public CommandoVM base (recommended bootstrap)" -ForegroundColor White
+        Write-Host "    2. Enter custom git URL" -ForegroundColor White
+        Write-Host "    3. Use a different local folder" -ForegroundColor White
+        Write-Host "    Q. Cancel" -ForegroundColor White
+
+        $sourceChoice = (Read-Host "  Select [1/2/3/Q] (default 1)").Trim()
+        if ([string]::IsNullOrWhiteSpace($sourceChoice)) { $sourceChoice = "1" }
+
+        switch -Regex ($sourceChoice) {
+            '^[Qq]$' { throw "Cancelled by user." }
+            '^1$' {
+                $script:InstallerRepoUrl = "https://github.com/mandiant/commando-vm.git"
+                Write-OK "Using public CommandoVM repo as bootstrap base"
+            }
+            '^2$' {
+                $customUrl = (Read-Host "  Enter installer git URL").Trim()
+                if ([string]::IsNullOrWhiteSpace($customUrl)) {
+                    throw "No installer git URL provided."
+                }
+                $script:InstallerRepoUrl = $customUrl
+            }
+            '^3$' {
+                $localPath = (Read-Host "  Enter local installer source path").Trim()
+                if ([string]::IsNullOrWhiteSpace($localPath)) {
+                    throw "No local installer source path provided."
+                }
+
+                $script:InstallerRoot = $localPath
+                Update-InstallerPaths
+
+                $profilesDir = Join-Path $InstallerRoot "Profiles"
+                $imagesDir = Join-Path $InstallerRoot "Images"
+                if ((Test-Path $InstallScript) -and (Test-Path $profilesDir) -and (Test-Path $imagesDir)) {
+                    Write-OK "Using local installer source: $InstallerRoot"
+                    return
+                }
+
+                throw "Local installer source is incomplete at: $InstallerRoot"
+            }
+            default {
+                throw "Invalid source selection."
+            }
+        }
     }
 
     if (Test-Path $InstallerRoot) {
