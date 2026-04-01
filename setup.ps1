@@ -344,7 +344,7 @@ function Copy-EnabledPkgs {
     $copy = [ordered]@{}
     foreach ($cat in $Catalog.Keys) {
         $copy[$cat] = [System.Collections.Generic.List[string]]::new()
-        if ($null -ne $SourceEnabledPkgs -and $SourceEnabledPkgs.ContainsKey($cat)) {
+        if ($null -ne $SourceEnabledPkgs -and $SourceEnabledPkgs.Contains($cat)) {
             foreach ($pkgId in $SourceEnabledPkgs[$cat]) {
                 $copy[$cat].Add($pkgId)
             }
@@ -404,7 +404,7 @@ function Set-PresetSelection {
     }
 
     foreach ($cat in $enableCategories) {
-        if (-not $Catalog.ContainsKey($cat)) { continue }
+        if (-not $Catalog.Contains($cat)) { continue }
         foreach ($pkg in $Catalog[$cat]) {
             $ep[$cat].Add($pkg.Pkg)
         }
